@@ -21,7 +21,7 @@ var options = {
     'max reconnection attempts': 10
 };
 
-_socket = io.connect('http://10.208.66.222:8989', options);
+_socket = io.connect('http://<you wish>', options);
 
 if(_socket) {
 
