@@ -8,10 +8,10 @@ use ccproto_client;
 use api_consts;
 
 # your connect information
-my $HOST =	'85.17.169.193';		#HOST
-my $PORT =	32714;			#PORT
-my $USERNAME =	'wade.womersley';		#LOGIN
-my $PASSWORD =	'D$36GaOP)sa';	#PASSWORD
+my $HOST =	'';		#HOST
+my $PORT =	;			#PORT
+my $USERNAME =	'';		#LOGIN
+my $PASSWORD =	'';	#PASSWORD
 
 my $PIC_FILE_NAME = "export-cropped.png";
 
