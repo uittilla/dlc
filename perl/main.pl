@@ -4,10 +4,10 @@ use lib substr(__FILE__, 0, rindex (__FILE__, "/"));
 use ccproto_client;
 use api_consts;
 
-my $HOST =	'85.17.169.193';      #HOST
-my $PORT =	32714;                #PORT
-my $USERNAME =	'wade.womersley'; #LOGIN
-my $PASSWORD =	'D$36GaOP)sa';    #PASSWORD
+my $HOST =	'';      #HOST
+my $PORT =	;                #PORT
+my $USERNAME =	''; #LOGIN
+my $PASSWORD =	'';    #PASSWORD
 
 my $PIC_FILE_NAME = "/home/ubuntu/wblc/perl/export-cropped.png";
 
