@@ -1,0 +1,15 @@
+//
+//ec2-176-34-76-115.eu-west-1.compute.amazonaws.com
+module.exports = {
+    bs: {
+        "host": "ec2-46-137-63-242.eu-west-1.compute.amazonaws.com",
+        "port": 11300
+    },
+
+    mongo : {
+        "host": "localhost"
+    },
+
+    DEBUG : false,
+    GRAB  : false 
+};

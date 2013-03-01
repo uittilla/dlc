@@ -1,0 +1,303 @@
+"use strict";
+/*
+ * Author:   Ibbo (mark.ibbotson@manheim.co.uk)
+ * Purpose:  Weekly backlink checker API
+ */
+
+var http, EventEmitter, url, WlcMongo, CrawlAgent, cheerio, Crawler, client, tidy, DEBUG, config;
+
+http = require('http');
+EventEmitter = require('events').EventEmitter;
+url = require('url');
+WlcMongo = require('./mongo');
+CrawlAgent = require('./agent');
+cheerio = require('cheerio');
+config = require('../config');
+
+DEBUG = config.DEBUG;
+
+Crawler = {
+    __proto__: EventEmitter.prototype,   // inherit EventEmitter
+
+    init: function(host, anchor_text, links, id, targets) {
+
+        var agent, self, $, internals, grab, visited_count, crawled, j, matched, maxMatches, errors,live_backlink, status, anchor_match, masters;
+
+        agent         = CrawlAgent.init(host, links, id);// web crawler
+        self          = this;                            // self = this
+        $             = null;                            // Cheerio
+        internals     = [];                              // internal links storage
+        grab          = config.GRAB,                     // grabs internal links (< 100)
+        visited_count = 0;                               // count of pages visited
+        crawled       = 0;                               // count of pages crawled success
+        j             = 0;                               // temp var to count max matches
+        matched       = 0;                               // number of matches found
+        maxMatches    = 0;                               // max number of matches found
+        errors        = 0;                               // number of pages errored
+        live_backlink = 0;                               // live backlink indicator
+        status        = 0;                               // page visit status code (apache)
+        anchor_match  = 0;                               // indicate anchor match
+        masters       = targets;                         // target_urls
+
+        agent.timeout = 15000;                           // page view timeout
+        agent.setMaxListeners(25);                       // max listeners (net sockets)
+
+        var start = new Date();           // runtime metrics
+
+        agent.on('next', function(err, worker, data) {
+            try {
+                visited_count++;
+
+                if(data && data.host) {
+                    if(visited_count === 1) {
+                        status = data.status; // we only desire the status code from page 1
+                    }
+                }
+
+                if(!err ) {
+
+                    if(data && data.redirect.location.length > 0 && visited_count === 1) {
+                        console.log("redirect",data.redirect )
+                       // data.host = url.parse(data.redirect.location);
+                       // agent.host = url.parse(data.host);
+                       // agent.current = data.host.href;
+                    }
+
+                    crawled++;
+
+                    var tmp = data.host.uri;
+
+                    if(DEBUG) {
+                      console.log(url.parse(tmp));
+                      console.log("data", data.host);
+                      console.log("status", status);
+                    }
+
+                    var regExp = new RegExp("^(http|https)://" + url.parse(tmp).host  + "($|/)");
+
+                    $ = cheerio.load(data.body, {lowerCaseTags:true, lowerCaseAttributeNames: true, ignoreWhitespace: true});
+
+                    /*
+                     * Section to finds clean and append links to crawl
+                     */
+                    if(grab && agent._pending.length < 99 && internals.length < 99) {
+                        try{
+                            // host match regex
+                            if(DEBUG) {
+                              console.log("regex", regExp);
+                              console.log("data", data.host);
+                            }
+
+                            var last;
+
+                            // finds internal links
+                            var nodes =  $('a').map(function (i, el) {
+
+                                var href = $(this).attr('href');
+                                if(href !== undefined && href !== '') {
+
+                                   href = href.trim();
+
+                                   var isLocal = (href.substring(0,4) === "http") ? regExp.test(href) : true;
+
+                                   if(DEBUG)
+                                     console.log(href + " is " + (isLocal ? "local" : "not local"));
+
+                                   if(isLocal && !href.match("google")) {
+
+                                     if(!/^http/.test(href)) {
+                                       href = url.resolve(tmp, href);
+                                     }
+
+                                     return href;
+                                   }
+                                }
+
+                                href = null;
+                            }).join('::-::');
+
+                            internals = nodes.split('::-::');
+
+                            /*
+                             * The above link finder does not sanitize our links
+                             * So we do this here using filter
+                             */
+
+                            // removes dupes
+                            internals = internals.filter(function (elem, pos) {
+                                return internals.indexOf(elem) === pos;
+                            });
+
+                            // removes unrequired links
+                            internals = internals.filter(function (elem, pos) {
+                                return !(/^(javascript|JavaScript|mail|#)/i).test(elem);
+                            });
+
+                            // removes unrequired links
+                            internals = internals.filter(function (elem, pos) {
+                                return !(/#/i).test(elem);
+                            });
+
+                            // removes unrequired feed links
+                            internals = internals.filter(function (elem, pos) {
+                                return !(/(feed|feed\/|rss|rss\|rss2|rss2\/)$/i).test(elem);
+                            });
+                            // finally drop any of the following bad urls
+                            internals = internals.filter(function (elem, pos) {
+                                return !(/\.(bmp|BMP|exe|EXE|jpeg|JPEG|swf|SWF|pdf|PDF|gif|GIFF|png|PNG|jpg|JPG|doc|DOC|avi|AVI|mov|MOV|mpg|MPG|tiff|TIFF|zip|ZIP|tgz|TGZ|xml|XML|xml|XML|rss|RSS|mp3|MP3|ogg|OGG|wav|WAV|rar|RAR)$/i).test(elem);
+                            });
+
+                            //internals = (internals.length > 100) ? internals.splice(0, 99) : internals;
+                            for (var i in internals) {
+                                if(internals[i] !== undefined && internals[i] !== '' && !agent.findLink(internals[i]) ) {
+                                    if((agent.pending() + visited_count < 100)) {
+                                        //console.log("appending link %s", internals[i])
+                                        agent.addLink(internals[i]);
+                                    }
+                                } else {
+                                    // console.log("used that link %s", internals[i])
+                                }
+                            }
+
+                        } catch(e) {
+
+                        }
+                    }  else {
+                        grab = false;
+                    }
+
+                    var link = url.parse(masters[0]), tmp, regexp, base_link, stripped_link;
+
+                    base_link = link.host + link.path;
+
+                    if(base_link.substr(-1) == '/') {
+                        base_link = base_link.substr(0, base_link.length - 1);
+                    }
+
+                    stripped_link = base_link.replace("www.", "");
+
+                    regexp = "a[href^='" + masters[0] + "'], a[href^=' " + masters[0] + "'], a[href^='" + base_link + "'], a[href^=' " + base_link + "'], a[href^='http://" + stripped_link  + "']";
+
+                    if(link.host && !link.host.match("www")) {
+                        tmp = "http://www." + link.host + link.path;
+
+                        if(tmp.substr(-1) == '/') {
+                            tmp = tmp.substr(0, tmp.length - 1);
+                        }
+
+                        regexp =  "a[href^='" + masters[0] + "'], a[href^=' " + masters[0] + "'], a[href^='" + base_link + "'], a[href^=' " + base_link + "'], a[href^='http://" + stripped_link  + "'], a[href^='" + tmp + "'], a[href^=' " + tmp + "']";
+                    }
+
+                    $(regexp).each(function(i)
+                    {
+                        if($(this).attr('href') !== undefined)
+                        {
+                            j++;
+                            matched++;
+
+                            if(visited_count == 1) {
+                                live_backlink = 1;
+                                if(DEBUG)
+                                  console.log("Active backlink found %d, %d", j, matched);
+                            }
+
+
+                        }
+                        if(anchor_text === "/*Non-Brand Random Key Term/") {
+                            anchor_text = "Non-Brand Random Key Term";
+                        }
+                        if($(this).html() !== "undefined" && ($(this).html().match(anchor_text) || (/img src/.test($(this).html()) && /Image/.test(anchor_text)) )) {
+                            if(visited_count == 1) {
+                                anchor_match = 1;
+                                if(DEBUG)
+                                  console.log("Anchor match found");
+                            }
+                        }
+
+                    });
+
+                    if(j > maxMatches) {
+                        maxMatches = j;
+                    }
+                    else
+                    {
+                        if(DEBUG)
+                          console.log("J should be < maxmatches %d %d", j, maxMatches)
+                    }
+
+
+                    j = 0;
+                    nodes = 0;
+
+                    if(agent.pending() + visited_count >= 99) {
+                        grab = false;
+                    }
+
+
+
+                    // console.log("STATUS", data.host);
+                    console.log("Page: %d %s, grab: %s, matched: %d, max matches: %d viewed %d", agent._pending.length, agent.current, grab, matched, maxMatches, visited_count);
+
+                    data.host.internals = internals.length;
+
+                    //console.log("host ", data.host);
+                    internals = [];
+                    $ = null;
+
+                } else {
+                    errors++;
+                    console.log("crawler err", err);
+
+                    if(err && err.status && visited_count === 1) {
+                        status = err.status;
+
+                        console.log("1st page %d, %d", visited_count, err.status);
+
+                        if((err.status === 403 || err.status === 404 || err.status === 500)) {
+                            //status = err.status;
+                            worker.stop();
+                        }
+                    }
+                }
+
+                worker.next();
+            }
+             catch(e)
+            {
+               console.log("Oh whats happened here", e);
+               worker.next();
+            }
+        });
+
+        // Listens for a agent stop event
+        agent.once('stop', function() {
+            var running_time = new Date() - start;
+            var data = {
+                "viewed"       : visited_count,
+                "crawled"      : crawled,
+                "error"        : errors,
+                "runtime"      : running_time,
+                "is_live"      : live_backlink,
+                "matched"      : matched,
+                "max_matches"  : maxMatches,
+                "status"       : status,
+                "anchor_match" : anchor_match
+            };
+
+            console.log("Agent done, status %d, viewed %d, crawled %d, failed on %d", status, visited_count, crawled, errors);
+            visited_count=0;
+            crawled=0;
+
+            self.emit('stop', null, data);
+
+            agent.removeAllListeners();
+            agent = null;
+        });
+
+        agent.start();
+
+        return this;
+    }
+}
+
+module.exports = Crawler;

@@ -1,0 +1,20 @@
+{
+  "name":    "Weekly Dead Link Checker",
+  "description": "Checks url for backlink and anchor match",
+  "version": "0.0.1",
+  "author": "Mark Ibbotson",
+  "dependencies": {
+    "mongoose": "3.5.4",
+    "request": "2.12.0",
+    "cheerio": "0.10.5",
+    "nodestalker": "0.1.4",
+    "": ""
+  },
+  "keywords": ["backlink", "monitoring", "api", "check"],
+  "repository": "https://github.com/fzaninotto/uptime",
+  "license": "MIT",
+  "engine": {
+    "node": ">=0.8.16"
+  }
+}
+
