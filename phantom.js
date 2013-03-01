@@ -2,7 +2,7 @@
 
 /*
  *  Author: M Ibbotson (Ibbo) <mark.ibbotson@stickyeyes.com>
- *  Purpose: Provide google indexed indicator (defat captcha in process)
+ *  Purpose: Provide google indexed indicator (defeat captcha in process)
  *  TODO: make sure we dont loop over and over on the captcha and cause upset
  *  NOTE: Do not set vars directly in page.evaluate calls as they are sandboxed. 
  *  You need to return the values followed by a new method (in which you can modify stuff)
